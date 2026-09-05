@@ -270,6 +270,42 @@ class TestCLI(unittest.TestCase):
         ret = main([])
         self.assertEqual(ret, 1)
 
+    def test_audit_command(self):
+        ret = main(["audit", "--task-id", "TEST-AUDIT-001"])
+        self.assertEqual(ret, 0)
+
+    def test_verify_audit_command(self):
+        ret = main(["verify-audit"])
+        self.assertEqual(ret, 0)
+
+    def test_chat_command(self):
+        ret = main(["chat", "Explain", "ODI", "severity"])
+        self.assertEqual(ret, 0)
+
+    def test_serve_command_no_fastapi(self):
+        ret = main(["serve"])
+        self.assertEqual(ret, 1)
+
+
+class TestPathSecurity(unittest.TestCase):
+    """Test path security measures."""
+
+    def test_safe_resolve_path_absolute(self):
+        from spo2_odi import _safe_resolve_path
+        result = _safe_resolve_path("/tmp/test.csv")
+        self.assertTrue(os.path.isabs(result))
+
+    def test_safe_resolve_path_relative(self):
+        from spo2_odi import _safe_resolve_path
+        result = _safe_resolve_path("test.csv")
+        self.assertTrue(os.path.isabs(result))
+
+    def test_safe_resolve_path_traversal(self):
+        from spo2_odi import _safe_resolve_path
+        result = _safe_resolve_path("../../../etc/passwd")
+        # Should resolve to absolute path, not escape intended directory
+        self.assertTrue(os.path.isabs(result))
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

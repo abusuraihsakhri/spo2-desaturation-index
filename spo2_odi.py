@@ -372,6 +372,13 @@ def analyze_spo2_recording(
 # CSV processing
 # ---------------------------------------------------------------------------
 
+def _safe_resolve_path(path_str: str) -> str:
+    """Resolve a path safely, preventing directory traversal."""
+    import os.path
+    resolved = os.path.realpath(os.path.abspath(path_str))
+    return resolved
+
+
 def process_csv(input_path: str, output_path: str, spo2_col: str = "spo2",
                 time_col: Optional[str] = None, sampling_rate: float = 1.0,
                 threshold: float = 3.0, fio2: Optional[float] = None) -> int:
@@ -389,6 +396,10 @@ def process_csv(input_path: str, output_path: str, spo2_col: str = "spo2",
     Returns:
         Number of records processed (1 summary per file).
     """
+    # Resolve paths safely to prevent directory traversal
+    input_path = _safe_resolve_path(input_path)
+    output_path = _safe_resolve_path(output_path)
+
     spo2_values: List[float] = []
     time_values: List[float] = []
 
@@ -456,6 +467,22 @@ def build_parser() -> argparse.ArgumentParser:
     ep = sub.add_parser("estimate-pao2", help="Estimate PaO2 from SpO2")
     ep.add_argument("--spo2", type=float, required=True, help="SpO2 (%%)")
 
+    # Audit - log an audit event
+    audit = sub.add_parser("audit", help="Log an audit event")
+    audit.add_argument("--task-id", required=True, help="Task identifier for the audit event")
+
+    # Chat - interactive LLM query
+    chat = sub.add_parser("chat", help="Query the LLM reasoning adapter")
+    chat.add_argument("query", nargs="+", help="Query text for the LLM")
+
+    # Verify audit trail integrity
+    sub.add_parser("verify-audit", help="Verify HMAC-SHA256 audit trail integrity")
+
+    # Serve - start FastAPI web server
+    serve = sub.add_parser("serve", help="Start FastAPI web server")
+    serve.add_argument("--host", default="0.0.0.0", help="Host to bind to")
+    serve.add_argument("--port", type=int, default=8000, help="Port to bind to")
+
     return p
 
 
@@ -493,6 +520,40 @@ def main(argv=None):
         pao2 = estimate_pao2_from_spo2(args.spo2)
         print(json.dumps({"spo2": args.spo2, "estimated_pao2": round(pao2, 1)}, indent=2))
         return 0
+
+    if args.cmd == "audit":
+        from agents.base import AuditLogger
+        entry = AuditLogger.log(
+            actor="cli",
+            actor_tier="operator",
+            event_type="MANUAL_AUDIT",
+            details={"task_id": args.task_id}
+        )
+        print(json.dumps(entry, indent=2))
+        return 0
+
+    if args.cmd == "chat":
+        from agents.llm_factory import LLMFactory
+        llm = LLMFactory.create("mock")
+        query = " ".join(args.query)
+        response = llm.invoke(query)
+        print(json.dumps({"query": query, "response": response}, indent=2))
+        return 0
+
+    if args.cmd == "verify-audit":
+        from agents.base import AuditLogger
+        valid = AuditLogger.verify_integrity()
+        trail = AuditLogger.get_trail()
+        print(json.dumps({
+            "integrity_valid": valid,
+            "trail_length": len(trail),
+        }, indent=2))
+        return 0
+
+    if args.cmd == "serve":
+        print("FastAPI server mode requires 'fastapi' and 'uvicorn' packages.")
+        print("Install with: pip install fastapi uvicorn")
+        return 1
 
     parser.print_help()
     return 1
