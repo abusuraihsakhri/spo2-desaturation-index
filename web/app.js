@@ -94,7 +94,7 @@
   function analyze(values, interval = 1, threshold = 3) {
     assertPositiveFinite(interval, "Sampling interval");
     assertPositiveFinite(threshold, "Desaturation threshold");
-    if (threshold > 100) throw new Error("Desaturation threshold must be at most 100%.");
+    if (threshold <= 1 || threshold > 100) throw new Error("Desaturation threshold must exceed the 1% recovery margin and be at most 100%.");
     if (!Array.isArray(values) || !values.length) throw new Error("No SpO₂ measurements.");
     if (values.length > 150000) throw new Error("Maximum 150,000 samples supported.");
     for (let i = 0; i < values.length; i++) {
