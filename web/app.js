@@ -180,13 +180,21 @@
       svg.appendChild(line);
     }
     const path = document.createElementNS(ns, "path");
-    const count = Math.min(values.length, 1400);
+    // Plot a min/max envelope, retaining short dips even for long recordings.
+    const buckets = Math.min(values.length, 700);
     const commands = [];
-    for (let i = 0; i < count; i++) {
-      const idx = count === 1 ? 0 : Math.round(i * (values.length - 1) / (count - 1));
-      const x = pad + (count === 1 ? 0 : i * width / (count - 1));
-      const y = pad + (max - values[idx]) / (max - min) * height;
-      commands.push((i ? "L" : "M") + x.toFixed(2) + " " + y.toFixed(2));
+    for (let i = 0; i < buckets; i++) {
+      const first = Math.floor(i * values.length / buckets);
+      const end = Math.min(values.length, Math.ceil((i + 1) * values.length / buckets));
+      let low = 100, high = 0;
+      for (let k = first; k < end; k++) {
+        low = Math.min(low, values[k]); high = Math.max(high, values[k]);
+      }
+      const x = pad + (buckets === 1 ? 0 : i * width / (buckets - 1));
+      const yLow = pad + (max - low) / (max - min) * height;
+      const yHigh = pad + (max - high) / (max - min) * height;
+      commands.push((i ? "L" : "M") + x.toFixed(2) + " " + yLow.toFixed(2));
+      commands.push("L" + x.toFixed(2) + " " + yHigh.toFixed(2));
     }
     path.setAttribute("d", commands.join(" "));
     path.setAttribute("fill", "none"); path.setAttribute("stroke", "#175cd3");
@@ -198,13 +206,20 @@
   function init() {
     const el = id => document.getElementById(id);
     let demoText = null, lastReport = null;
+    function resetResults() {
+      lastReport = null;
+      el("results").hidden = true;
+      el("empty").hidden = false;
+      el("download").hidden = true;
+    }
     el("file").addEventListener("change", () => {
       demoText = null;
-      lastReport = null;
+      resetResults();
       el("source").textContent = el("file").files[0] ? "Selected: " + el("file").files[0].name : "No file selected.";
       el("message").textContent = "";
     });
     el("demo").addEventListener("click", () => {
+      resetResults();
       demoText = exampleCsv();
       el("file").value = "";
       el("time-col").value = "time_sec";
@@ -217,6 +232,7 @@
       el("message").classList.remove("error");
       el("message").textContent = "Analyzing locally…";
       el("analyze").disabled = true;
+      resetResults();
       try {
         const file = el("file").files[0];
         if (!file && demoText === null) throw new Error("Choose a CSV file or load the demonstration.");
