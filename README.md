@@ -1,221 +1,82 @@
-# SpO2 Desaturation Index (ODI) Calculator
+# SpO₂ Desaturation Index (ODI)
 
-> **Domain:** Clinical Decision Support & Biomedical Computing
+Calculate the oxygen desaturation index, percent of readings below saturation thresholds, and SpO₂ summary statistics from regularly sampled oximetry recordings.
 
-<div align="center">
+The **browser application** is available in `index.html` and runs entirely client-side. It accepts CSV recordings, displays a trace and the first 50 completed events, and exports a JSON report containing all detected events.
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-![Python](https://img.shields.io/badge/Python-3.10%20%7C%203.11%20%7C%203.12-3776AB.svg?logo=python&logoColor=white)
-![Audit Trail](https://img.shields.io/badge/Audit-HMAC--SHA256_Tamper--Evident-brightgreen.svg)
-![Zero-PHI Guard](https://img.shields.io/badge/Guard-Zero--PHI_Outbound-blue.svg)
+## Method and limitations
 
-</div>
+- **ODI** = completed desaturation events / recording duration in hours.
+- An event starts after a drop of at least the selected threshold (default **3 percentage points**) from the maximum of the **preceding 100 samples**.
+- The event ends only when SpO₂ returns to within **1 percentage point** of its initial baseline. Dips that never recover before the recording ends are not counted.
+- **T90, T88 and T85** are percentages of samples below 90%, 88% and 85%. Percentages represent fractions of recording time only when the sampling interval is constant.
+- The time denominator is **total recorded time**, not estimated sleep time. The algorithm does not identify sleep, apnea/hypopnea, motion artifacts or poor signal quality.
+- Python utilities also provide an SpO₂/FiO₂ ratio and a **rough, piecewise PaO₂ estimate**, which is particularly unreliable near full saturation. Do not use the PaO₂ estimate in place of an arterial blood gas.
 
----
+**Research/educational prototype.** The event detector is not validated against manually scored polysomnography or an applicable device-specific ODI algorithm. Results must not be used independently for diagnosis, severity staging, treatment or patient safety decisions. A selected 3% threshold does not establish AASM-compliant hypopnea scoring.
 
-## Overview
+## Browser application
 
-Real clinical calculators for pulse oximetry analysis:
-
-- **SpO2/FiO2 ratio** (surrogate for P/F ratio)
-    - Normal ~476 when SpO2=100%, FiO2=0.21
-- **Estimated PaO2 from SpO2** (Severinghaus equation approximation)
-- **Oxygen Desaturation Index (ODI)**: desaturation events per hour
-    - Normal: < 5 events/hour
-    - Mild: 5-15
-    - Moderate: 15-30
-    - Severe: > 30
-- **Time below SpO2 thresholds** (T90, T88, T85)
-- **SpO2 variability metrics** (mean, SD, coefficient of variation)
-
-Author: Dr. Abu Suraih Sakhri. License: MIT.
-
----
-
-## Installation
+Serve the repository root from a local web server (or use the GitHub Pages deployment once verified):
 
 ```bash
-# Clone the repository
-git clone https://github.com/abusuraihsakhri/spo2-desaturation-index.git
-cd spo2-desaturation-index
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Set audit security key (required)
-export AUDIT_SECRET_KEY=$(python -c "import secrets; print(secrets.hex(32))")
+python -m http.server 8001
+# Open http://localhost:8001/
 ```
 
----
+Upload a UTF-8 CSV containing a numeric `spo2` column, and optionally a `time_sec` column with elapsed seconds. The file must be regularly sampled. Without a time column, enter the sampling rate in Hz. Blank, out-of-range, non-finite and irregularly timestamped measurements are rejected. Files are limited to 5 MB and 150,000 samples in the browser. Use **Load demonstration** for synthetic test data (one hour, eight recovered dips).
 
-## CLI Usage
+**Privacy:** The browser processes CSV input in local memory; no recording is uploaded and the application makes no network requests during processing. Files are not persisted in browser storage. Downloaded JSON reports remain on the user's device. As with all browser applications, access only through a trusted deployment.
 
-### Analyze a CSV Recording
+## Python CLI
+
+Python 3.10 or newer:
+
 ```bash
-python cli.py analyze sample_data/sample_recording.csv --spo2-col spo2
-python cli.py analyze data.csv --fio2 0.5 --threshold 3.0 -o output_summary.csv
-```
-
-### Quick ODI Calculation
-```bash
+python -m pip install -r requirements.txt
 python cli.py odi --events 10 --hours 8
-```
-
-### SpO2/FiO2 Ratio
-```bash
 python cli.py sf --spo2 96 --fio2 0.21
-```
-
-### Estimate PaO2
-```bash
 python cli.py estimate-pao2 --spo2 95
+python cli.py analyze sample_data/sample_recording.csv --spo2-col spo2
+python cli.py analyze data.csv --time-col time_sec --threshold 4 -o summary.csv
 ```
 
-### Audit Operations
-```bash
-python cli.py audit --task-id "TASK-001"
-python cli.py verify-audit
-```
+The core `spo2_odi.py` functions use only the Python standard library. The API requires the dependencies in `requirements.txt`. Timestamp input must be strictly increasing and evenly spaced (1% tolerance); resample irregular recordings before analysis. Existing input is not overwritten.
 
-### LLM Query (Mock Mode)
-```bash
-python cli.py chat "Explain ODI severity classification"
-```
-
----
-
-## Core API (Python)
-
-```python
-from spo2_odi import (
-    spo2_fio2_ratio,
-    estimate_pao2_from_spo2,
-    calculate_odi,
-    odi_severity,
-    analyze_spo2_recording,
-    detect_desaturation_events,
-)
-
-# Calculate S/F ratio
-sf = spo2_fio2_ratio(96.0, 0.21)  # ~457.1
-
-# Estimate PaO2
-pao2 = estimate_pao2_from_spo2(95.0)  # ~80.0 mmHg
-
-# Full analysis
-result = analyze_spo2_recording(
-    spo2_values=[96.0, 95.5, 94.0, ...],
-    sampling_interval_sec=1.0,
-    threshold_pct=3.0,
-    fio2=0.21
-)
-print(result["odi"], result["odi_severity"])
-```
-
----
-
-## Security Features
-
-### Zero-PHI Outbound Interceptor
-Active regex inspection blocking SSNs, MRNs, phone numbers, emails, and patient identifiers from outbound data.
-
-```python
-from agents.base import PHIGuard, SecurityException
-
-try:
-    PHIGuard.assert_no_phi("Patient John Doe MRN-12345")
-except SecurityException:
-    print("PHI detected and blocked")
-```
-
-### HMAC-SHA256 Tamper-Evident Audit Trail
-Chained, cryptographically signed logs for every evaluation and state transition.
-
-```python
-from agents.base import AuditLogger
-
-entry = AuditLogger.log(
-    actor="system",
-    actor_tier="supervisor",
-    event_type="TASK_COMPLETED",
-    details={"task_id": "TASK-001"}
-)
-# Verify integrity
-assert AuditLogger.verify_integrity()
-```
-
-**Note:** The `AUDIT_SECRET_KEY` environment variable must be set. Generate a secure key with:
-```bash
-python -c "import secrets; print(secrets.token_hex(32))"
-```
-
----
-
-## Testing
+## Local API and container
 
 ```bash
-# Run all tests
-python -m pytest -v
-
-# Run specific test files
-python -m pytest test_spo2_odi.py -v
-python -m pytest tests/ -v
-
-# Run with coverage
-python -m pytest --cov=. --cov-report=html
+# Only needed for supervisor audit operations; use a unique key per installation.
+export AUDIT_SECRET_KEY="$(python -c 'import secrets; print(secrets.token_hex(32))')"
+python cli.py serve --host 127.0.0.1 --port 8000
 ```
 
----
+Use `POST /api/odi` with a JSON body:
 
-## Enterprise Multi-Agent Architecture
-
-The project includes a multi-agent supervisor system for clinical decision support:
-
-- **InvariantQCWorker**: Mathematical and protocol boundary auditing
-- **SafetyEscalationWorker**: Safety boundary and emergency interlock
-- **ProtocolConformanceWorker**: Spec conformance and anomaly triage
-- **SystemSupervisor**: Orchestrates multi-worker evaluations with consensus
-
-```python
-from agents.supervisor import SystemSupervisor
-from agents.models import SystemTaskPayload
-
-supervisor = SystemSupervisor(model_provider="mock")
-payload = SystemTaskPayload(
-    task_id="TASK-001",
-    target_identifier="SPECIMEN-001",
-    primary_metric=15.0,
-    secondary_metric=4.0,
-)
-dossier = supervisor.process_task(payload)
+```json
+{"spo2_values":[96,96,92,91,95,96],"sampling_interval_sec":1,"threshold_pct":3}
 ```
 
----
+Other endpoints include `GET /health`, `GET /metrics` (JSON), and optional demonstration supervisor endpoints `POST /api/audit`, `POST /api/chat`, `GET /api/audit/logs`. The supervisor workers and chat adapter are **generic/mock demonstrations**, not clinically validated reasoning or an external language-model integration. The regex-based PHI guard detects only a subset of identifier formats; do not treat it as de-identification or HIPAA compliance. Audit HMAC signatures are held **in memory only**, so the trail is not durable across restarts.
 
-## File Structure
+For Docker Compose, set `AUDIT_SECRET_KEY` in a local `.env` file (excluded from version control):
 
-```
-spo2-desaturation-index/
-├── spo2_odi.py          # Core calculations + CLI
-├── cli.py               # CLI entry point
-├── enrichment.py        # Enrichment feature engines
-├── simulator.py         # High-throughput simulation
-├── agents/              # Multi-agent security & audit system
-│   ├── base.py          # PHI guard, HMAC audit trail
-│   ├── models.py        # Pydantic data models
-│   ├── workers.py       # Specialized worker agents
-│   ├── supervisor.py    # Orchestrator
-│   └── llm_factory.py   # LLM integration (mock)
-├── sample_data/         # Sample SpO2 recordings
-├── tests/               # Test suite
-├── conftest.py          # Pytest configuration
-├── requirements.txt     # Python dependencies
-├── Dockerfile           # Container build
-└── benchmark_dataset.json  # Benchmark test cases
+```bash
+printf 'AUDIT_SECRET_KEY=%s\n' "$(python -c 'import secrets; print(secrets.token_hex(32))')" > .env
+docker compose up --build
 ```
 
----
+## Tests
+
+```bash
+python -m pip install -r requirements.txt pytest
+python -m pytest -q
+node --test web/app.test.js
+docker build -t spo2-odi .
+```
+
+CI tests Python 3.10–3.13, the browser calculations and the Docker build. Deployment uses a separate GitHub Pages workflow. The static calculator does not need Pyodide, Python server processes, credentials, or a JavaScript package installation.
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) for details.
+[MIT](LICENSE).
