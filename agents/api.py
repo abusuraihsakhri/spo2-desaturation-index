@@ -1,7 +1,7 @@
 """
 FastAPI REST API Server for Spo2 Desaturation Index.
 """
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Annotated
 from fastapi import FastAPI, HTTPException
 from pydantic import Field
 from spo2_odi import analyze_spo2_recording
@@ -24,7 +24,7 @@ class ChatRequest(BaseModel):
 
 
 class RecordingRequest(BaseModel):
-    spo2_values: List[float] = Field(min_length=1, max_length=150000)
+    spo2_values: List[Annotated[float, Field(ge=0, le=100, allow_inf_nan=False)]] = Field(min_length=1, max_length=150000)
     sampling_interval_sec: float = Field(default=1.0, gt=0, allow_inf_nan=False)
     threshold_pct: float = Field(default=3.0, gt=0, le=100, allow_inf_nan=False)
     fio2: float | None = Field(default=None, gt=0, le=1, allow_inf_nan=False)
