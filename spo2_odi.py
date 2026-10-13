@@ -456,8 +456,6 @@ def process_csv(input_path: str, output_path: str, spo2_col: str = "spo2",
     if time_values and any(not math.isfinite(t) for t in time_values):
         raise ValueError("Times must be finite")
     if len(time_values) >= 2:
-        if any(not math.isfinite(t) for t in time_values):
-            raise ValueError("Times must be finite")
         intervals = [b - a for a, b in zip(time_values, time_values[1:])]
         if any(dt <= 0 for dt in intervals):
             raise ValueError("Times must be strictly increasing")
@@ -477,7 +475,6 @@ def process_csv(input_path: str, output_path: str, spo2_col: str = "spo2",
     return 1
 
 
-# ---------------------------------------------------------------------------
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
