@@ -1,0 +1,52 @@
+name: Deploy browser calculator
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify browser calculations
+        run: node --test web/app.test.js
+      - name: Stage public site only
+        run: |
+          mkdir -p _site/web
+          cp index.html _site/index.html
+          cp web/app.js _site/web/app.js
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deployment
+        uses: actions/deploy-pages@v4
+      - name: Verify live page and script
+        run: |
+          url="${{ steps.deployment.outputs.page_url }}"
+          for attempt in $(seq 1 12); do
+            if curl --fail --location --silent --show-error "${url%/}/" | grep -q "SpO₂ desaturation index" && \
+               curl --fail --location --silent --show-error "${url%/}/web/app.js" | grep -q "function analyze"; then
+              echo "Live Pages smoke test passed"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "Live Pages smoke test failed" >&2
+          exit 1

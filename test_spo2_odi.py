@@ -282,9 +282,12 @@ class TestCLI(unittest.TestCase):
         ret = main(["chat", "Explain", "ODI", "severity"])
         self.assertEqual(ret, 0)
 
-    def test_serve_command_no_fastapi(self):
-        ret = main(["serve"])
-        self.assertEqual(ret, 1)
+    def test_serve_command(self):
+        from unittest.mock import patch
+        with patch("uvicorn.run") as run:
+            ret = main(["serve", "--host", "127.0.0.1"])
+        self.assertEqual(ret, 0)
+        run.assert_called_once()
 
 
 class TestPathSecurity(unittest.TestCase):
