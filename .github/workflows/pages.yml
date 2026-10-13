@@ -37,3 +37,16 @@ jobs:
           path: _site
       - id: deployment
         uses: actions/deploy-pages@v4
+      - name: Verify live page and script
+        run: |
+          url="${{ steps.deployment.outputs.page_url }}"
+          for attempt in $(seq 1 12); do
+            if curl --fail --location --silent --show-error "${url%/}/" | grep -q "SpO₂ desaturation index" && \
+               curl --fail --location --silent --show-error "${url%/}/web/app.js" | grep -q "function analyze"; then
+              echo "Live Pages smoke test passed"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "Live Pages smoke test failed" >&2
+          exit 1
