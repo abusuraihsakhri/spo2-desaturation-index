@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="Offline oxygen desaturation index calculator for evenly sampled SpO2 CSV recordings.">
+  <meta name="referrer" content="no-referrer">
+  <title>SpO₂ desaturation index calculator</title>
+  <style>
+    :root{color-scheme:light;--bg:#f4f7fb;--card:#fff;--ink:#122238;--muted:#486078;--border:#d5e0ec;--blue:#175cd3;--navy:#0c284b;--error:#b42318}
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,-apple-system,Segoe UI,sans-serif}
+    main{max-width:1080px;margin:auto;padding:28px 20px 64px}
+    header{margin:0 0 22px}h1{font-size:clamp(1.7rem,3vw,2.25rem);line-height:1.15;margin:0 0 9px}h2{font-size:1.15rem;margin:0 0 15px}
+    p{margin:0 0 14px}.muted{color:var(--muted)}.small{font-size:.88rem}.notice{border-left:4px solid var(--blue);background:#e7f0ff;padding:12px 16px;margin-top:15px}
+    .layout{display:grid;grid-template-columns:minmax(290px,385px) 1fr;gap:18px;align-items:start}
+    .panel{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:23px;box-shadow:0 3px 18px #1230550b}
+    .form-row{margin-bottom:16px}label{font-weight:650;display:block;margin-bottom:5px}
+    input,select,button{font:inherit}input[type="text"],input[type="number"],input[type="file"]{width:100%;border:1px solid #90a6bd;border-radius:7px;padding:10px;background:#fff;color:var(--ink)}
+    input:focus-visible,button:focus-visible,a:focus-visible{outline:3px solid #80b4ff;outline-offset:2px}
+    .two{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    button{background:var(--blue);color:#fff;border:0;border-radius:8px;padding:11px 16px;cursor:pointer;font-weight:650}
+    button.secondary{background:#e8f0fa;color:var(--navy);border:1px solid #b7c9dd}
+    button:disabled{opacity:.5;cursor:not-allowed}.actions{display:flex;flex-wrap:wrap;gap:10px}
+    #message{min-height:1.5rem;margin:10px 0 0}#message.error{color:var(--error);font-weight:600}
+    .stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:14px 0 20px}
+    .stat{background:#f0f5fc;padding:14px;border-radius:9px}.stat strong{font-size:1.6rem;display:block;line-height:1.3}.stat span{font-size:.85rem;color:var(--muted)}
+    #chart{width:100%;height:200px;border:1px solid var(--border);border-radius:8px;background:#f9fbff;display:block}
+    .table-scroll{overflow:auto;max-height:290px}table{width:100%;border-collapse:collapse;font-size:.9rem}
+    th,td{padding:9px 7px;text-align:left;border-bottom:1px solid var(--border)}th{position:sticky;top:0;background:#f7faff}
+    #results[hidden],#download[hidden]{display:none}.info{margin:10px 0;color:var(--muted)}
+    footer{margin-top:22px;color:var(--muted);font-size:.88rem}
+    a{color:var(--blue)}@media(max-width:800px){.layout{grid-template-columns:1fr}.panel{padding:18px}}@media(max-width:420px){.two,.stats{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>SpO₂ desaturation index</h1>
+    <p class="muted">Analyze regularly sampled pulse-oximetry CSV recordings directly in your browser.</p>
+    <p class="notice small"><strong>Research / educational use only.</strong> This exploratory rolling-baseline detector is not a validated sleep-study scoring system or a substitute for clinical interpretation. SpO₂ artifacts and wake time may affect the result.</p>
+  </header>
+  <div class="layout">
+    <section class="panel" aria-labelledby="input-heading">
+      <h2 id="input-heading">Recording and parameters</h2>
+      <div class="form-row">
+        <label for="file">CSV recording</label>
+        <input type="file" accept=".csv,text/csv" id="file">
+        <p id="source" class="small muted">No file selected. Use the demonstration recording to explore the calculator.</p>
+      </div>
+      <div class="two">
+        <div class="form-row"><label for="spo2-col">SpO₂ column</label><input id="spo2-col" type="text" value="spo2" autocomplete="off"></div>
+        <div class="form-row"><label for="time-col">Time column (optional)</label><input id="time-col" type="text" placeholder="time_sec" autocomplete="off"></div>
+      </div>
+      <div class="two">
+        <div class="form-row"><label for="hz">Sampling rate (Hz)</label><input id="hz" type="number" min="0.001" step="any" value="1" required><p class="small muted">Used when no time column.</p></div>
+        <div class="form-row"><label for="threshold">Desaturation drop (%)</label><input id="threshold" type="number" min="0.1" max="100" step="any" value="3" required></div>
+      </div>
+      <p class="small muted">Events require a drop of at least the threshold from the maximum of the preceding 100 samples, followed by recovery to within 1 percentage point of the starting baseline. Unrecovered dips are not counted.</p>
+      <div class="actions">
+        <button id="analyze" type="button">Analyze recording</button>
+        <button id="demo" type="button" class="secondary">Load demonstration</button>
+      </div>
+      <p id="message" role="status" aria-live="polite"></p>
+    </section>
+    <section class="panel" aria-labelledby="output-heading">
+      <h2 id="output-heading">Analysis</h2>
+      <p id="empty" class="muted">Choose a CSV file or load the demonstration recording to view calculated measurements.</p>
+      <div id="results" hidden>
+        <div class="stats">
+          <div class="stat"><strong id="odi">–</strong><span>ODI (events / recording hour)</span></div>
+          <div class="stat"><strong id="events">–</strong><span>Recovered desaturation events</span></div>
+          <div class="stat"><strong id="duration">–</strong><span>Recording duration (hours)</span></div>
+          <div class="stat"><strong id="t90">–</strong><span>Samples below 90% (%)</span></div>
+        </div>
+        <h2>SpO₂ trace</h2>
+        <svg id="chart" viewBox="0 0 720 200" role="img" aria-label="Recorded oxygen saturation over time"></svg>
+        <p id="range" class="info small"></p>
+        <h2>Detected events</h2>
+        <div class="table-scroll">
+          <table><thead><tr><th>Start (s)</th><th>Duration (s)</th><th>Baseline</th><th>Nadir</th><th>Drop</th></tr></thead>
+          <tbody id="event-rows"></tbody></table>
+        </div>
+        <p id="truncated" class="small muted"></p>
+        <div class="actions"><button id="download" type="button" class="secondary" hidden>Download JSON report</button></div>
+      </div>
+    </section>
+  </div>
+  <footer>
+    <p><strong>Privacy:</strong> CSV files are processed locally in the browser. No recording is transmitted to a server or stored by this application. Downloaded reports remain on your device.</p>
+    <p>See the <a href="https://github.com/abusuraihsakhri/spo2-desaturation-index">source repository</a> for Python CLI/API and methodology.</p>
+  </footer>
+</main>
+<script src="./web/app.js" defer></script>
+</body>
+</html>
