@@ -96,3 +96,17 @@ def test_serve_launches_fastapi():
     run.assert_called_once()
     args, kwargs = run.call_args
     assert kwargs["port"] == 9090
+
+
+def test_api_odi_exposes_python_calculator():
+    from agents.api import RecordingRequest, api_odi
+    result = api_odi(RecordingRequest(spo2_values=[96.0] * 3600))
+    assert result["num_desaturation_events"] == 0
+    assert result["recording_duration_hours"] == 1.0
+
+
+def test_api_odi_rejects_invalid_samples():
+    from agents.api import RecordingRequest
+    from pydantic import ValidationError
+    with pytest.raises(ValidationError):
+        RecordingRequest(spo2_values=[101.0])
