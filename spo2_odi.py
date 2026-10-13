@@ -29,6 +29,16 @@ from typing import Any, Dict, List, Optional, Tuple
 
 
 # ---------------------------------------------------------------------------
+# Input validation
+# ---------------------------------------------------------------------------
+
+def _validate_spo2_samples(values: List[float]) -> None:
+    for i, value in enumerate(values):
+        if not isinstance(value, (int, float)) or not math.isfinite(value) or not 0 <= value <= 100:
+            raise ValueError(f"SpO2 sample at index {i} must be finite and within [0, 100]")
+
+
+# ---------------------------------------------------------------------------
 # Core SpO2 calculations
 # ---------------------------------------------------------------------------
 
@@ -44,10 +54,9 @@ def spo2_fio2_ratio(spo2: float, fio2: float) -> float:
     Returns:
         S/F ratio.
     """
-    if fio2 <= 0:
-        raise ValueError("FiO2 must be > 0")
-    if spo2 < 0 or spo2 > 100:
-        raise ValueError("SpO2 must be 0-100")
+    if not math.isfinite(fio2) or not 0 < fio2 <= 1:
+        raise ValueError("FiO2 must be finite and within (0, 1]")
+    _validate_spo2_samples([spo2])
     return spo2 / fio2
 
 
@@ -68,8 +77,7 @@ def estimate_pao2_from_spo2(spo2: float) -> float:
     Returns:
         Estimated PaO2 in mmHg.
     """
-    if spo2 < 0 or spo2 > 100:
-        raise ValueError("SpO2 must be 0-100")
+    _validate_spo2_samples([spo2])
     if spo2 >= 90.0:
         # Flat portion: PaO2 ~60 at SpO2 90, ~100 at SpO2 100
         return 60.0 + (spo2 - 90.0) * 4.0
@@ -96,7 +104,9 @@ def estimate_pf_ratio_from_spo2(spo2: float, fio2: float) -> float:
         Estimated P/F ratio.
     """
     pao2 = estimate_pao2_from_spo2(spo2)
-    return pao2 / fio2 if fio2 > 0 else 0.0
+    if not math.isfinite(fio2) or not 0 < fio2 <= 1:
+        raise ValueError("FiO2 must be finite and within (0, 1]")
+    return pao2 / fio2
 
 
 # ---------------------------------------------------------------------------
@@ -113,6 +123,9 @@ def time_below_threshold(spo2_values: List[float], threshold: float) -> Tuple[in
     Returns:
         Tuple of (count_below, percent_below).
     """
+    if not math.isfinite(threshold) or not 0 <= threshold <= 100:
+        raise ValueError("Threshold must be finite and within [0, 100]")
+    _validate_spo2_samples(spo2_values)
     if not spo2_values:
         return 0, 0.0
     count = sum(1 for s in spo2_values if s < threshold)
@@ -154,6 +167,7 @@ def spo2_variability(spo2_values: List[float]) -> Dict[str, float]:
     Returns:
         Dict with mean, median, std_dev, min, max, coefficient_of_variation.
     """
+    _validate_spo2_samples(spo2_values)
     if not spo2_values:
         return {"mean": 0.0, "median": 0.0, "std_dev": 0.0,
                 "min": 0.0, "max": 0.0, "coefficient_of_variation": 0.0}
@@ -208,6 +222,15 @@ def detect_desaturation_events(
         List of event dicts with start_idx, end_idx, nadir_idx,
         baseline_spo2, nadir_spo2, depth, duration_sec.
     """
+    if not math.isfinite(sampling_interval_sec) or sampling_interval_sec <= 0:
+        raise ValueError("Sampling interval must be finite and positive")
+    if not math.isfinite(threshold_pct) or not 0 < threshold_pct <= 100:
+        raise ValueError("Desaturation threshold must be finite and within (0, 100]")
+    if not isinstance(baseline_window, int) or baseline_window < 1:
+        raise ValueError("Baseline window must be a positive integer")
+    if not math.isfinite(min_recovery_pct) or not 0 <= min_recovery_pct < threshold_pct:
+        raise ValueError("Recovery margin must be finite, nonnegative, and less than threshold")
+    _validate_spo2_samples(spo2_values)
     n = len(spo2_values)
     if n == 0:
         return []
@@ -274,8 +297,10 @@ def calculate_odi(
     Returns:
         ODI (events/hour).
     """
-    if recording_hours <= 0:
-        raise ValueError("Recording duration must be > 0")
+    if not isinstance(num_events, int) or isinstance(num_events, bool) or num_events < 0:
+        raise ValueError("Event count must be a nonnegative integer")
+    if not math.isfinite(recording_hours) or recording_hours <= 0:
+        raise ValueError("Recording duration must be finite and positive")
     return num_events / recording_hours
 
 
@@ -288,14 +313,16 @@ def odi_severity(odi: float) -> str:
     Returns:
         Severity category string.
     """
+    if not math.isfinite(odi) or odi < 0:
+        raise ValueError("ODI must be finite and nonnegative")
     if odi < 5:
         return "Normal (< 5 events/hour)"
     elif odi < 15:
-        return "Mild (5-15 events/hour)"
+        return "Mild (5 to <15 events/hour)"
     elif odi < 30:
-        return "Moderate (15-30 events/hour)"
+        return "Moderate (15 to <30 events/hour)"
     else:
-        return "Severe (> 30 events/hour)"
+        return "Severe (>=30 events/hour)"
 
 
 # ---------------------------------------------------------------------------
@@ -321,6 +348,11 @@ def analyze_spo2_recording(
     """
     if not spo2_values:
         return {"error": "No SpO2 data provided"}
+    _validate_spo2_samples(spo2_values)
+    if not math.isfinite(sampling_interval_sec) or sampling_interval_sec <= 0:
+        raise ValueError("Sampling interval must be finite and positive")
+    if fio2 is not None and (not math.isfinite(fio2) or not 0 < fio2 <= 1):
+        raise ValueError("FiO2 must be finite and within (0, 1]")
 
     n = len(spo2_values)
     total_seconds = n * sampling_interval_sec
@@ -359,7 +391,7 @@ def analyze_spo2_recording(
     }
 
     # S/F ratio if FiO2 known
-    if fio2 is not None and fio2 > 0:
+    if fio2 is not None:
         mean_spo2 = variability["mean"]
         result["spo2_fio2_ratio"] = round(spo2_fio2_ratio(mean_spo2, fio2), 1)
         result["estimated_pf_ratio"] = round(estimate_pf_ratio_from_spo2(mean_spo2, fio2), 1)
@@ -373,7 +405,7 @@ def analyze_spo2_recording(
 # ---------------------------------------------------------------------------
 
 def _safe_resolve_path(path_str: str) -> str:
-    """Resolve a path safely, preventing directory traversal."""
+    """Normalize a local CLI file path (not a filesystem sandbox)."""
     import os.path
     resolved = os.path.realpath(os.path.abspath(path_str))
     return resolved
@@ -382,56 +414,68 @@ def _safe_resolve_path(path_str: str) -> str:
 def process_csv(input_path: str, output_path: str, spo2_col: str = "spo2",
                 time_col: Optional[str] = None, sampling_rate: float = 1.0,
                 threshold: float = 3.0, fio2: Optional[float] = None) -> int:
-    """Process a CSV of SpO2 data.
+    """Read an evenly sampled CSV and write a single-row analysis summary.
 
-    Args:
-        input_path: Path to input CSV.
-        output_path: Path to output summary CSV.
-        spo2_col: Name of SpO2 column.
-        time_col: Name of time column (optional).
-        sampling_rate: Sampling rate in Hz if no time column.
-        threshold: Desaturation threshold (%).
-        fio2: FiO2 if known.
-
-    Returns:
-        Number of records processed (1 summary per file).
+    Time values, when supplied, are elapsed seconds and must be increasing
+    at a constant interval (within a 1% tolerance). Missing readings and
+    timestamp/SpO2 mismatches are rejected rather than silently realigned.
     """
-    # Resolve paths safely to prevent directory traversal
     input_path = _safe_resolve_path(input_path)
     output_path = _safe_resolve_path(output_path)
+    if input_path == output_path:
+        raise ValueError("Output path must differ from input path")
+    if not math.isfinite(sampling_rate) or sampling_rate <= 0:
+        raise ValueError("Sampling rate must be finite and positive")
 
     spo2_values: List[float] = []
     time_values: List[float] = []
-
     with open(input_path, newline="", encoding="utf-8-sig") as f:
         reader = csv.DictReader(f)
-        for row in reader:
-            val = row.get(spo2_col, "")
-            if val not in ("", None):
+        if not reader.fieldnames or spo2_col not in reader.fieldnames:
+            raise ValueError(f"Missing SpO2 column: {spo2_col}")
+        if time_col and time_col not in reader.fieldnames:
+            raise ValueError(f"Missing time column: {time_col}")
+        for line, row in enumerate(reader, start=2):
+            val = row.get(spo2_col)
+            if val is None or not str(val).strip():
+                raise ValueError(f"Missing SpO2 value at CSV row {line}")
+            try:
                 spo2_values.append(float(val))
-            if time_col and time_col in row:
-                tv = row.get(time_col, "")
-                if tv not in ("", None):
+            except ValueError as exc:
+                raise ValueError(f"Invalid SpO2 value at CSV row {line}") from exc
+            if time_col:
+                tv = row.get(time_col)
+                if tv is None or not str(tv).strip():
+                    raise ValueError(f"Missing time value at CSV row {line}")
+                try:
                     time_values.append(float(tv))
+                except ValueError as exc:
+                    raise ValueError(f"Invalid time value at CSV row {line}") from exc
 
-    if time_values and len(time_values) == len(spo2_values):
-        intervals = [time_values[i+1] - time_values[i] for i in range(len(time_values)-1)]
-        sampling_interval = sum(intervals) / len(intervals) if intervals else 1.0
-    else:
-        sampling_interval = 1.0 / sampling_rate
+    sampling_interval = 1.0 / sampling_rate
+    if len(time_values) >= 2:
+        if any(not math.isfinite(t) for t in time_values):
+            raise ValueError("Times must be finite")
+        intervals = [b - a for a, b in zip(time_values, time_values[1:])]
+        if any(dt <= 0 for dt in intervals):
+            raise ValueError("Times must be strictly increasing")
+        sampling_interval = sum(intervals) / len(intervals)
+        if any(abs(dt - sampling_interval) > sampling_interval * 0.01 for dt in intervals):
+            raise ValueError("Irregular timestamps are not supported; resample before analysis")
 
     result = analyze_spo2_recording(spo2_values, sampling_interval, threshold, fio2)
+    if "error" in result:
+        raise ValueError(result["error"])
 
-    # Write summary
     summary = {k: v for k, v in result.items() if k != "events"}
     with open(output_path, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=list(summary.keys()))
         writer.writeheader()
         writer.writerow(summary)
-
     return 1
 
 
+# ---------------------------------------------------------------------------
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
@@ -491,7 +535,9 @@ def main(argv=None):
     args = parser.parse_args(argv)
 
     if args.cmd == "analyze":
-        out = args.output or args.input.replace(".csv", "_summary.csv")
+        import os.path
+        root, _ext = os.path.splitext(args.input)
+        out = args.output or root + "_summary.csv"
         n = process_csv(args.input, out, args.spo2_col, args.time_col,
                         args.sampling_rate, args.threshold, args.fio2)
         print(f"Analysis complete -> {out}")
@@ -551,9 +597,14 @@ def main(argv=None):
         return 0
 
     if args.cmd == "serve":
-        print("FastAPI server mode requires 'fastapi' and 'uvicorn' packages.")
-        print("Install with: pip install fastapi uvicorn")
-        return 1
+        try:
+            import uvicorn
+            from agents.api import app
+        except ImportError as exc:
+            print("Server dependencies missing. Install requirements.txt.", file=sys.stderr)
+            return 1
+        uvicorn.run(app, host=args.host, port=args.port)
+        return 0
 
     parser.print_help()
     return 1
