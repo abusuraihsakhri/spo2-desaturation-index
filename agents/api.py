@@ -1,13 +1,12 @@
 """
 FastAPI REST API Server for Spo2 Desaturation Index.
 """
-from typing import Dict, Any, List, Annotated
+from typing import List, Annotated
 from fastapi import FastAPI, HTTPException
-from pydantic import Field
+from pydantic import BaseModel, Field
 from spo2_odi import analyze_spo2_recording
-from pydantic import BaseModel
-from .base import AuditLogger, PHIGuard
-from .models import SystemTaskPayload, ConsensusDossier
+from .base import AuditLogger
+from .models import SystemTaskPayload
 from .supervisor import SystemSupervisor
 
 supervisor = SystemSupervisor(model_provider="mock")
@@ -48,9 +47,14 @@ def health():
 
 @app.get("/metrics")
 def metrics():
+    try:
+        block_count = len(AuditLogger.get_trail())
+    except RuntimeError:
+        # ODI analysis does not require an audit key.
+        block_count = 0
     return {
         "dossiers_processed_total": len(supervisor.dossier_registry),
-        "audit_blocks_total": len(AuditLogger.get_trail()),
+        "audit_blocks_total": block_count,
         "system_status": "AVAILABLE"
     }
 
