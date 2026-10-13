@@ -214,7 +214,7 @@ def detect_desaturation_events(
     Args:
         spo2_values: List of SpO2 readings (sequential, evenly spaced).
         sampling_interval_sec: Seconds between samples (default 1.0).
-        threshold_pct: Drop threshold in % SpO2 (default 3.0 per AASM).
+        threshold_pct: Drop threshold in % SpO2 (default 3.0, exploratory threshold).
         baseline_window: Number of samples for rolling baseline (default 100).
         min_recovery_pct: Recovery margin below baseline (default 1.0).
 
@@ -453,6 +453,8 @@ def process_csv(input_path: str, output_path: str, spo2_col: str = "spo2",
                     raise ValueError(f"Invalid time value at CSV row {line}") from exc
 
     sampling_interval = 1.0 / sampling_rate
+    if time_values and any(not math.isfinite(t) for t in time_values):
+        raise ValueError("Times must be finite")
     if len(time_values) >= 2:
         if any(not math.isfinite(t) for t in time_values):
             raise ValueError("Times must be finite")
@@ -524,7 +526,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     # Serve - start FastAPI web server
     serve = sub.add_parser("serve", help="Start FastAPI web server")
-    serve.add_argument("--host", default="0.0.0.0", help="Host to bind to")
+    serve.add_argument("--host", default="127.0.0.1", help="Host to bind to")
     serve.add_argument("--port", type=int, default=8000, help="Port to bind to")
 
     return p
