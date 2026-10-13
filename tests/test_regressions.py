@@ -110,3 +110,14 @@ def test_api_odi_rejects_invalid_samples():
     from pydantic import ValidationError
     with pytest.raises(ValidationError):
         RecordingRequest(spo2_values=[101.0])
+
+
+def test_synthetic_one_hour_eight_recovered_events():
+    values = [96.0] * 3600
+    for j in range(8):
+        for i in range(200 + j * 400, 212 + j * 400):
+            values[i] = 91.0
+    result = analyze_spo2_recording(values, sampling_interval_sec=1, threshold_pct=3)
+    assert result["num_desaturation_events"] == 8
+    assert result["odi"] == 8.0
+    assert result["t90"]["percent"] == 0.0
