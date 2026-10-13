@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Spo2 Desaturation Index API",
-    "description": "Enterprise Distributed Component Platform (Clinical & Cryptographic AI) adhering to CAP / CLSI / NIST Standards.",
-    "version": "3.0.0-ENTERPRISE",
+    "description": "Exploratory oxygen desaturation calculations and optional local supervisor endpoints.",
+    "version": "3.1.0",
     "contact": {
       "name": "Dr. Abu Suraih Sakhri",
       "url": "https://github.com/abusuraihsakhri"
@@ -22,17 +22,17 @@
     },
     "/metrics": {
       "get": {
-        "summary": "Prometheus operational metrics",
+        "summary": "JSON counters for supervisor operations",
         "responses": {
           "200": {
-            "description": "Prometheus text metrics"
+            "description": "JSON supervisor metrics"
           }
         }
       }
     },
     "/api/audit": {
       "post": {
-        "summary": "Dispatch task payload across specialized workers",
+        "summary": "Evaluate generic demonstration supervisor metrics",
         "requestBody": {
           "content": {
             "application/json": {
@@ -76,7 +76,7 @@
     },
     "/api/chat": {
       "post": {
-        "summary": "Air-gapped supervisory conversational assistant",
+        "summary": "Deterministic mock supervisor response",
         "requestBody": {
           "content": {
             "application/json": {
@@ -103,10 +103,65 @@
     },
     "/api/audit/logs": {
       "get": {
-        "summary": "Retrieve and cryptographically verify HMAC audit trail",
+        "summary": "Inspect in-memory audit signatures and verify HMAC chain",
         "responses": {
           "200": {
             "description": "Cryptographic audit trail"
+          }
+        }
+      }
+    },
+    "/api/odi": {
+      "post": {
+        "summary": "Analyze an evenly sampled SpO2 time series",
+        "description": "Unvalidated rolling-baseline detector; data are not persisted by this endpoint.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "spo2_values"
+                ],
+                "properties": {
+                  "spo2_values": {
+                    "type": "array",
+                    "items": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 100
+                    },
+                    "minItems": 1,
+                    "maxItems": 150000
+                  },
+                  "sampling_interval_sec": {
+                    "type": "number",
+                    "exclusiveMinimum": 0,
+                    "default": 1
+                  },
+                  "threshold_pct": {
+                    "type": "number",
+                    "exclusiveMinimum": 0,
+                    "maximum": 100,
+                    "default": 3
+                  },
+                  "fio2": {
+                    "type": "number",
+                    "exclusiveMinimum": 0,
+                    "maximum": 1
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "SpO2 metrics, ODI and detected events"
+          },
+          "422": {
+            "description": "Invalid input"
           }
         }
       }
