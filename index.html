@@ -54,7 +54,7 @@
       </div>
       <div class="two">
         <div class="form-row"><label for="hz">Sampling rate (Hz)</label><input id="hz" type="number" min="0.001" step="any" value="1" required><p class="small muted">Used when no time column.</p></div>
-        <div class="form-row"><label for="threshold">Desaturation drop (%)</label><input id="threshold" type="number" min="0.1" max="100" step="any" value="3" required></div>
+        <div class="form-row"><label for="threshold">Desaturation drop (%)</label><input id="threshold" type="number" min="1.01" max="100" step="any" value="3" required></div>
       </div>
       <p class="small muted">Events require a drop of at least the threshold from the maximum of the preceding 100 samples, followed by recovery to within 1 percentage point of the starting baseline. Unrecovered dips are not counted.</p>
       <div class="actions">
